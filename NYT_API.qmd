@@ -1,0 +1,77 @@
+---
+title: "NYT API"
+author: "Esra Dogan"
+format: html
+editor: visual
+---
+
+# How often does The New York Times mention selected Turkish public figures, and how has this changed over the past 20 years (2006–2026)?
+
+*The New York Times* is one of the most widely read newspapers in the world, and being mentioned in it can be seen as one sign of international visibility. In this assignment, I use the NYT Article Search API to explore how often the *Times* has mentioned a set of Turkish public figures, and whether this has changed over the past 20 years.
+
+These eight people are some of my personal favorites. I chose public figures who have received some international recognition, so I expected they might be mentioned in the *Times* at least occasionally, and I wanted to find out how often.
+
+- [**Orhan Pamuk**](https://en.wikipedia.org/wiki/Orhan_Pamuk)**:** Novelist, winner of the 2006 Nobel Prize in Literature.
+
+- [**Elif Shafak**](https://en.wikipedia.org/wiki/Elif_Shafak)**:** Novelist who writes in both Turkish and English; shortlisted for the Booker Prize in 2019.
+
+- [**Nazim Hikmet**](https://en.wikipedia.org/wiki/Naz%C4%B1m_Hikmet) **(1902–1963):** One of the most important Turkish poets of the 20th century, widely translated.
+
+- [**Nuri Bilge Ceylan**](https://en.wikipedia.org/wiki/Nuri_Bilge_Ceylan)**:** Film director; won the Palme d’Or at Cannes in 2014 with *Winter Sleep*.
+
+- [**Tarkan**](https://en.wikipedia.org/wiki/Tarkan_(singer))**:** Pop singer, known internationally for his late-1990s hit “Şımarık.”
+
+- [**Haluk Bilginer**](https://en.wikipedia.org/wiki/Haluk_Bilginer)**:** Stage and screen actor; won the International Emmy for Best Actor in 2019.
+
+- [**Barış Manço**](https://en.wikipedia.org/wiki/Bar%C4%B1%C5%9F_Man%C3%A7o) **(1943–1999):** Rock musician and pioneer of Anatolian rock.
+
+- [**Aziz Sancar**](https://en.wikipedia.org/wiki/Aziz_Sancar)**:** Biochemist; winner of the 2015 Nobel Prize in Chemistry for his work on DNA repair.
+
+### Planned Approach
+
+For this assignment, I will use the NYT Article Search API (`https://api.nytimes.com/svc/search/v2/articlesearch.json`), which allows searching *Times* articles by keyword and date range. My API key will be stored as an environment variable. For each of the eight public figures and for each year from 2006 to 2026, I will send one request that searches for their full name in quotes (for example, `q = '"Orhan Pamuk"'`) and limits the results to that year using the `begin_date` and `end_date` parameters. Because the *Times* does not use Turkish characters, I will write the names in their English spelling (for example, `"Baris Manco"`). I will make the requests and parse the JSON responses with the `httr2` package. Instead of downloading every article, I will extract the total number of matching articles from the response (`response$meta$hits`), which tells me how many times each person was mentioned in a given year. I will then combine these results into a tidy tibble with one row per person per year, including their name, profession, year and number of mentions. Finally, I will use a bar chart to compare the total number of mentions across the eight figures and a line chart to show how their mentions changed over time, and I will briefly interpret what the results show.
+
+### Anticipated Challenges
+
+I expect a few challenges in this analysis. The first is ambiguous names: “Tarkan” is a single name that is also a common Turkish first name and the name of a 1999 album, so a search may return articles that are not about the singer. I will look at a sample of the results to check how many are relevant. A related issue is spelling, since the *Times* does not use Turkish characters and some names have more than one English spelling (for example, Elif Shafak vs. Şafak), which means I might miss some mentions. It is also important to remember that a “hit” only means the name appears somewhere in an article, so a short mention in a list counts the same as a full profile; the numbers show visibility, not depth of coverage. On the technical side, the API limits how many requests I can make per minute and per day, so I will need to pause between requests and save the results locally to avoid downloading the data again every time I render the document.
+
+Finally, 2026 is not over yet, so its counts will be lower than those of full years. In addition, Nazim Hikmet (died 1963) and Barış Manço (died 1999) passed away long before the period I am studying, so they may be mentioned less often. More generally, some of these figures may rarely or never appear in the *Times*: even though they are very well known in Turkey, fame at home does not guarantee coverage in an American newspaper. A result of zero mentions would therefore not be an error, but a finding in itself.
+
+```{r}
+library(httr2)
+library(tidyverse)
+
+resp <- request("https://api.nytimes.com/svc/search/v2/articlesearch.json") |>
+  req_url_query(`api-key` = Sys.getenv("NYT_API_KEY")) |>
+  req_perform() |>
+  resp_body_json(simplifyVector = TRUE)
+names(resp)
+names(resp$response)
+resp$response$meta
+names(resp$response$docs)
+View(resp$response$docs)
+```
+
+### References
+
+Biographical information is from Wikipedia.
+
+- Orhan Pamuk: <https://en.wikipedia.org/wiki/Orhan_Pamuk>
+
+- Elif Shafak: <https://en.wikipedia.org/wiki/Elif_Shafak>
+
+- Nazım Hikmet: [https://en.wikipedia.org/wiki/Nazım_Hikmet](https://en.wikipedia.org/wiki/Naz%C4%B1m_Hikmet)
+
+- Nuri Bilge Ceylan: <https://en.wikipedia.org/wiki/Nuri_Bilge_Ceylan>
+
+- Tarkan: <https://en.wikipedia.org/wiki/Tarkan_(singer)>
+
+- Haluk Bilginer: <https://en.wikipedia.org/wiki/Haluk_Bilginer>
+
+- Barış Manço: [https://en.wikipedia.org/wiki/Barış_Manço](https://en.wikipedia.org/wiki/Bar%C4%B1%C5%9F_Man%C3%A7o)
+
+- Aziz Sancar: <https://en.wikipedia.org/wiki/Aziz_Sancar>
+
+API documentation:
+
+- NYT Article Search API: <https://developer.nytimes.com/docs/articlesearch-product/1/overview>
