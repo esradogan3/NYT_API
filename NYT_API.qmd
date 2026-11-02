@@ -33,7 +33,7 @@ For this assignment, I will use the NYT Article Search API (`https://api.nytimes
 
 ### Anticipated Challenges
 
-I expect a few challenges in this analysis. The first is ambiguous names: “Tarkan” is a single name that is also a common Turkish first name and the name of a 1999 album, so a search may return articles that are not about the singer. I will look at a sample of the results to check how many are relevant. A related issue is spelling, since the *Times* does not use Turkish characters and some names have more than one English spelling (for example, Elif Shafak vs. Şafak), which means I might miss some mentions. It is also important to remember that a “hit” only means the name appears somewhere in an article, so a short mention in a list counts the same as a full profile; the numbers show visibility, not depth of coverage. On the technical side, the API limits how many requests I can make per minute and per day, so I will need to pause between requests and save the results locally to avoid downloading the data again every time I render the document.
+I expect a few challenges in this analysis. The first is ambiguous names: “Tarkan” is a single name that is also a common Turkish first name and the name of a 1999 album, so a search may return articles that are not about the singer. A related issue is spelling, since the *Times* does not use Turkish characters and some names have more than one English spelling (for example, Elif Shafak vs. Şafak), which means I might miss some mentions. It is also important to remember that a “hit” only means the name appears somewhere in an article, so a short mention in a list counts the same as a full profile; the numbers show visibility, not depth of coverage. On the technical side, the API limits how many requests I can make per minute and per day, so I will need to pause between requests and save the results locally to avoid downloading the data again every time I render the document.
 
 Finally, 2026 is not over yet, so its counts will be lower than those of full years. In addition, Nazim Hikmet (died 1963) and Barış Manço (died 1999) passed away long before the period I am studying, so they may be mentioned less often. More generally, some of these figures may rarely or never appear in the *Times*: even though they are very well known in Turkey, fame at home does not guarantee coverage in an American newspaper. A result of zero mentions would therefore not be an error, but a finding in itself.
 
@@ -64,7 +64,7 @@ resp_pamuk <- request("https://api.nytimes.com/svc/search/v2/articlesearch.json"
   resp_body_json(simplifyVector = TRUE)
 
 resp_pamuk$response$metadata$hits
-View(resp_pamuk$response$docs)
+glimpse(resp_pamuk$response$docs)
 ```
 
 ```{r}
@@ -87,6 +87,8 @@ names(resp_pamuk_years$response)
 #### Data Cleaning Notes
 
 I searched for each person’s full name in quotes, without Turkish characters (e.g., “Baris Manco”), because the *Times* uses English spellings and searching surnames alone could return unrelated results. Instead of downloading every article, I kept only the total number of matching articles (`hits`) for each person and year, so the final data frame has one row per person per year. I originally planned to get yearly counts in a single request using the API’s `facet` option, but the response did not include facet data, so I sent one request per year instead. The response field for the total count is `metadata` rather than `meta`, which I had to adjust.
+
+The `docs` part of the response contains nested fields such as `headline` and `byline`, but since I only needed the total count, I did not have to flatten them. There were no missing values: years with no matching articles return a count of 0, which I kept as 0 rather than treating as missing. Finally, 2026 only includes articles through October 2026.
 
 ```{r}
 people <- tibble(
@@ -149,8 +151,6 @@ p <- ggplot(mentions, aes(x = year, y = hits, color = name,
 ggplotly(p, tooltip = "text")
 ```
 
-Orhan Pamuk clearly dominates, with about 63% of all mentions, while most of the other figures appear only rarely.
-
 ```{r}
 totals <- mentions |>
   group_by(name, profession) |>
@@ -178,6 +178,8 @@ p_totals <- ggplot(totals, aes(x = total_hits, y = reorder(name, total_hits),
 
 ggplotly(p_totals, tooltip = "text")
 ```
+
+Orhan Pamuk clearly dominates, with about 63% of all mentions, while most of the other figures appear only rarely.
 
 ### Effect of Major Awards on NYT Mentions
 
