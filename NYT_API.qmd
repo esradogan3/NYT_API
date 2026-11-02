@@ -1,5 +1,5 @@
 ---
-title: "NYT API"
+title: "Turkish Public Figures in The New York Times"
 author: "Esra Dogan"
 format: html
 editor: visual
@@ -29,7 +29,7 @@ These eight people are some of my personal favorites. I chose public figures who
 
 ### Planned Approach
 
-For this assignment, I will use the NYT Article Search API (`https://api.nytimes.com/svc/search/v2/articlesearch.json`), which allows searching *Times* articles by keyword and date range. My API key will be stored as an environment variable. For each of the eight public figures and for each year from 2006 to 2026, I will send one request that searches for their full name in quotes (for example, `q = '"Orhan Pamuk"'`) and limits the results to that year using the `begin_date` and `end_date` parameters. Because the *Times* does not use Turkish characters, I will write the names in their English spelling (for example, `"Baris Manco"`). I will make the requests and parse the JSON responses with the `httr2` package. Instead of downloading every article, I will extract the total number of matching articles from the response (`response$meta$hits`), which tells me how many times each person was mentioned in a given year. I will then combine these results into a tidy tibble with one row per person per year, including their name, profession, year and number of mentions. Finally, I will use a bar chart to compare the total number of mentions across the eight figures and a line chart to show how their mentions changed over time, and I will briefly interpret what the results show.
+For this assignment, I will use the NYT Article Search API (`https://api.nytimes.com/svc/search/v2/articlesearch.json`), which allows searching *Times* articles by keyword and date range. My API key will be stored as an environment variable. For each of the eight public figures and for each year from 2006 to 2026, I will send one request that searches for their full name in quotes (for example, `q = '"Orhan Pamuk"'`) and limits the results to that year using the `begin_date` and `end_date` parameters. Because the *Times* does not use Turkish characters, I will write the names in their English spelling (for example, `"Baris Manco"`). I will make the requests and parse the JSON responses with the `httr2` package. Instead of downloading every article, I will extract the total number of matching articles from the response (`response$metadata$hits`), which tells me how many times each person was mentioned in a given year. I will then combine these results into a tidy tibble with one row per person per year, including their name, profession, year and number of mentions. Finally, I will use a bar chart to compare the total number of mentions across the eight figures and a line chart to show how their mentions changed over time, and I will briefly interpret what the results show.
 
 ### Anticipated Challenges
 
@@ -47,10 +47,183 @@ resp <- request("https://api.nytimes.com/svc/search/v2/articlesearch.json") |>
   resp_body_json(simplifyVector = TRUE)
 names(resp)
 names(resp$response)
-resp$response$meta
+resp$response$metadata
 names(resp$response$docs)
-View(resp$response$docs)
+glimpse(resp$response$docs)
 ```
+
+### Looking at Orhan Pamuk among articles for a first observation:
+
+```{r}
+resp_pamuk <- request("https://api.nytimes.com/svc/search/v2/articlesearch.json") |>
+  req_url_query(
+    q = '"Orhan Pamuk"',
+    `api-key` = Sys.getenv("NYT_API_KEY")
+  ) |>
+  req_perform() |>
+  resp_body_json(simplifyVector = TRUE)
+
+resp_pamuk$response$metadata$hits
+View(resp_pamuk$response$docs)
+```
+
+```{r}
+resp_pamuk_years <- request("https://api.nytimes.com/svc/search/v2/articlesearch.json") |>
+  req_url_query(
+    q = '"Orhan Pamuk"',
+    begin_date = "20060101",
+    end_date = "20261031",
+    facet = "true",
+    facet_fields = "pub_year",
+    `api-key` = Sys.getenv("NYT_API_KEY")
+  ) |>
+  req_perform() |>
+  resp_body_json(simplifyVector = TRUE)
+
+resp_pamuk_years$response$metadata$hits
+names(resp_pamuk_years$response)
+```
+
+#### Data Cleaning Notes
+
+I searched for each person’s full name in quotes, without Turkish characters (e.g., “Baris Manco”), because the *Times* uses English spellings and searching surnames alone could return unrelated results. Instead of downloading every article, I kept only the total number of matching articles (`hits`) for each person and year, so the final data frame has one row per person per year. I originally planned to get yearly counts in a single request using the API’s `facet` option, but the response did not include facet data, so I sent one request per year instead. The response field for the total count is `metadata` rather than `meta`, which I had to adjust.
+
+```{r}
+people <- tibble(
+  name = c("Orhan Pamuk", "Elif Shafak", "Nazim Hikmet", "Nuri Bilge Ceylan",
+           "Tarkan", "Haluk Bilginer", "Baris Manco", "Aziz Sancar"),
+  profession = c("Writer", "Writer", "Poet", "Filmmaker",
+                 "Musician", "Actor", "Musician", "Scientist")
+)
+
+people
+```
+
+```{r}
+get_hits <- function(name, year) {
+  Sys.sleep(12)
+  end <- if (year == 2026) "20261031" else paste0(year, "1231")
+  
+  resp <- request("https://api.nytimes.com/svc/search/v2/articlesearch.json") |>
+    req_url_query(
+      q = paste0('"', name, '"'),
+      begin_date = paste0(year, "0101"),
+      end_date = end,
+      `api-key` = Sys.getenv("NYT_API_KEY")
+    ) |>
+    req_perform() |>
+    resp_body_json(simplifyVector = TRUE)
+  
+  resp$response$metadata$hits
+}
+
+if (file.exists("mentions.rds")) {
+  mentions <- readRDS("mentions.rds")
+} else {
+  mentions <- expand_grid(people, year = 2006:2026) |>
+    mutate(hits = map2_int(name, year, get_hits, .progress = TRUE))
+  saveRDS(mentions, "mentions.rds")
+}
+
+mentions
+```
+
+### Yearly NYT Mentions, 2006–2026
+
+```{r}
+library(plotly)
+
+p <- ggplot(mentions, aes(x = year, y = hits, color = name,
+                          text = paste0(name, "<br>Year: ", year,
+                                        "<br>Articles: ", hits))) +
+  geom_line(aes(group = name), linewidth = 1) +
+  geom_point(size = 1.5) +
+  labs(
+    title = "NYT mentions of selected Turkish public figures, 2006–2026",
+    x = "Year",
+    y = "Number of articles",
+    color = NULL
+  ) +
+  theme_minimal()
+
+ggplotly(p, tooltip = "text")
+```
+
+Orhan Pamuk clearly dominates, with about 63% of all mentions, while most of the other figures appear only rarely.
+
+```{r}
+totals <- mentions |>
+  group_by(name, profession) |>
+  summarise(total_hits = sum(hits), .groups = "drop") |>
+  mutate(share = total_hits / sum(total_hits)) |>
+  arrange(desc(total_hits))
+
+totals
+
+
+p_totals <- ggplot(totals, aes(x = total_hits, y = reorder(name, total_hits),
+                               fill = profession,
+                               text = paste0(name,
+                                             "<br>Profession: ", profession,
+                                             "<br>Total articles: ", total_hits,
+                                             "<br>Share: ", scales::percent(share, accuracy = 1)))) +
+  geom_col() +
+  labs(
+    title = "Total NYT mentions, 2006–2026",
+    x = "Number of articles",
+    y = NULL,
+    fill = "Profession"
+  ) +
+  theme_minimal()
+
+ggplotly(p_totals, tooltip = "text")
+```
+
+### Effect of Major Awards on NYT Mentions
+
+```{r}
+events <- tibble(
+  name = c("Orhan Pamuk", "Nuri Bilge Ceylan", "Aziz Sancar",
+           "Haluk Bilginer", "Elif Shafak"),
+  event = c("Nobel Prize in Literature", "Palme d'Or",
+            "Nobel Prize in Chemistry", "International Emmy",
+            "Booker Prize shortlist"),
+  event_year = c(2006, 2014, 2015, 2019, 2019)
+)
+
+events
+```
+
+```{r}
+p_events <- ggplot(mentions, aes(x = year, y = hits, color = name,
+                                 text = paste0(name, "<br>Year: ", year,
+                                               "<br>Articles: ", hits))) +
+  geom_line(aes(group = name), linewidth = 1) +
+  geom_point(size = 1) +
+  geom_vline(data = events, aes(xintercept = event_year),
+             linetype = "dashed", color = "grey40") +
+  facet_wrap(~ name, ncol = 2, scales = "free_y") +
+  labs(
+    title = "NYT mentions by person (dashed line = major award)",
+    x = "Year",
+    y = "Number of articles"
+  ) +
+  theme_minimal() +
+  theme(panel.spacing = unit(2, "lines"))
+
+ggplotly(p_events, tooltip = "text", height = 1000) |>
+  layout(showlegend = FALSE)
+```
+
+This chart shows each person’s yearly mentions on their own scale, with a dashed line marking the year of a major international award (no line is shown for Tarkan, Nazim Hikmet and Barış Manço, who did not receive such an award during this period). The award years do not always match the peaks. Aziz Sancar shows the clearest effect, with mentions appearing only around his 2015 Nobel Prize. Orhan Pamuk’s highest point is in 2006, the year of his Nobel Prize, but his mentions decline steadily afterward. For Nuri Bilge Ceylan, Elif Shafak and Haluk Bilginer, the award years do not stand out; Bilginer’s highest point is in 2014, possibly because he starred in Ceylan’s *Winter Sleep* that year.
+
+### Findings
+
+Among the eight public figures I selected, **Orhan Pamuk is by far the most frequently mentioned** in *The New York Times*, appearing in 389 articles between 2006 and 2026. This is about 63% of all mentions in my data, meaning that roughly two out of every three articles in my dataset mention Pamuk. Elif Shafak (14%) and Nuri Bilge Ceylan (12%) follow, and together these three account for about 90% of all mentions. The remaining five figures together appear in only 62 articles (about 10%): Tarkan in 27 (4%), Nazim Hikmet in 13 (2%), Haluk Bilginer in 10 (2%), Aziz Sancar in 8 (1%) and Barış Manço in just 4 (1%). This shows that even very famous names in Turkey rarely appear in the *Times*.
+
+### Use of AI
+
+I used Claude (Anthropic) as a tutor for setting up the API, troubleshooting R errors, and refining the wording of my written sections. The research question, choice of public figures, and final analysis are my own.
 
 ### References
 
